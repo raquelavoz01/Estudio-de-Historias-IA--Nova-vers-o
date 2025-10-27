@@ -1,0 +1,45 @@
+export interface Character {
+  name: string;
+  description: string;
+}
+
+export interface Chapter {
+  title: string;
+  outline: string;
+  content: string;
+  audio: string;
+  isNarrating: boolean;
+  narrationStyle: string;
+}
+
+export interface Story {
+  id: string;
+  premise: string;
+  title: string;
+  genre: string;
+  summary: string;
+  authorName: string;
+  characters: Character[];
+  chapters: Chapter[];
+  coverImage: string; // Base64 image string
+  synopsis: string;
+  description: string;
+  tags: string[];
+  userCoverImage: string;
+  userCoverImageMimeType: string;
+  chapterCount: number;
+  wordCount: number;
+}
+
+export type LoadingState = 'concept' | 'characters' | 'chapters' | 'content' | 'audio' | 'synopsis' | 'cover' | 'description' | 'tags' | 'realistic_cover' | null;
+
+export type LoadingTarget = {
+    type: LoadingState;
+    index?: number;
+};
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  content: string | { imageUrl: string; alt: string };
+}
