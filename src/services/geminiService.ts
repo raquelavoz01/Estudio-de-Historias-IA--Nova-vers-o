@@ -1,7 +1,6 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import type { Story, Character, Chapter, MagicTool } from '../types';
 
-// FIX: Switched from `import.meta.env.VITE_API_KEY` to `process.env.API_KEY` as per coding guidelines.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 export const generateConcept = async (premise: string): Promise<Pick<Story, 'title' | 'genre' | 'summary'>> => {
@@ -217,7 +216,7 @@ export const generateCoverImage = async (title: string, summary: string, authorN
             },
         });
 
-        const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+        const base64ImageBytes = response.generatedImages?.[0]?.image?.imageBytes;
         if (!base64ImageBytes) {
             throw new Error("Nenhuma imagem foi gerada.");
         }
@@ -269,9 +268,12 @@ export const generateRealisticCover = async (title: string, summary: string, aut
                 responseModalities: [Modality.IMAGE],
             },
         });
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                return part.inlineData.data;
+        const parts = response.candidates?.[0]?.content?.parts;
+        if (parts) {
+            for (const part of parts) {
+                if (part.inlineData) {
+                    return part.inlineData.data;
+                }
             }
         }
         throw new Error("Nenhuma imagem foi gerada na resposta.");
@@ -293,7 +295,7 @@ export const generateConceptArt = async (prompt: string): Promise<string> => {
             },
         });
 
-        const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+        const base64ImageBytes = response.generatedImages?.[0]?.image?.imageBytes;
         if (!base64ImageBytes) {
             throw new Error("Nenhuma imagem foi gerada.");
         }
@@ -348,4 +350,40 @@ export const executeMagicTool = async (toolPrompt: string, userInput: string): P
     console.error("Error executing magic tool:", error);
     throw new Error("Não foi possível executar a ferramenta de IA.");
   }
+};
+
+export const transformImage = async (userImageBase64: string, mimeType: string, stylePrompt: string): Promise<string> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: userImageBase64,
+                            mimeType: mimeType,
+                        },
+                    },
+                    {
+                        text: stylePrompt,
+                    },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+        const parts = response.candidates?.[0]?.content?.parts;
+        if (parts) {
+            for (const part of parts) {
+                if (part.inlineData) {
+                    return part.inlineData.data;
+                }
+            }
+        }
+        throw new Error("Nenhuma imagem foi gerada na resposta.");
+    } catch (error) {
+        console.error("Error transforming image:", error);
+        throw new Error("Não foi possível transformar a imagem.");
+    }
 };

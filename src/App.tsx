@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import type { Story, LoadingTarget, ChatMessage, Character, MagicTool } from './types';
+import type { Story, LoadingTarget, ChatMessage, Character, MagicTool, PhotoStyle } from './types';
 import { GoogleGenAI, Chat } from '@google/genai';
-import { generateConcept, generateChapterOutlines, generateChapterContent, narrateText, generateSynopsis, generateCoverImage, generateConceptArt, generateDescription, generateTags, generateRealisticCover, analyzeToolPrompt, executeMagicTool } from './services/geminiService';
+import { generateConcept, generateChapterOutlines, generateChapterContent, narrateText, generateSynopsis, generateCoverImage, generateConceptArt, generateDescription, generateTags, generateRealisticCover, analyzeToolPrompt, executeMagicTool, transformImage } from './services/geminiService';
 
 // --- Helper Functions & Components ---
 
@@ -169,12 +169,21 @@ const initialChatMessages: ChatMessage[] = [
 
 const NARRATION_STYLES = ['Padrão', 'Triste', 'Alegre', 'Emocionado', 'Sentimental', 'Sensual', 'Sombrio', 'Épico', 'Sussurrante'];
 
+const PHOTO_STYLES: PhotoStyle[] = [
+    { id: 'professional', name: 'Executivo Corporativo', icon: '👔', prompt: 'Transforme esta foto em um retrato profissional para o LinkedIn. Fundo de escritório moderno e desfocado, iluminação suave e profissional, terno ou blazer elegante. Mantenha as características faciais da pessoa.' },
+    { id: 'fantasy', name: 'Fantasia Épica', icon: '🏰', prompt: 'Reimagine esta pessoa como um herói de fantasia épica. Adicione uma armadura ornamentada, um fundo de castelo ou montanhas místicas e iluminação dramática. Mantenha as características faciais da pessoa.' },
+    { id: 'space', name: 'Explorador(a) do Espaço', icon: '🚀', prompt: 'Converta esta foto em um retrato de um astronauta ou explorador(a) do espaço. Adicione um capacete de ficção científica (mostrando o rosto), e um fundo de nebulosa ou interior de nave estelar. Mantenha as características faciais da pessoa.' },
+    { id: 'anime', name: 'Estilo Anime/Mangá', icon: '🌸', prompt: 'Redesenhe esta foto no estilo de um anime japonês moderno. Olhos grandes e expressivos, cabelo estilizado e um fundo vibrante e dinâmico. As características faciais devem ser reconhecíveis, mas adaptadas ao estilo anime.' },
+    { id: 'oil_painting', name: 'Pintura a Óleo', icon: '🎨', prompt: 'Transforme esta foto em uma pintura a óleo no estilo dos mestres clássicos. Textura de tela, pinceladas visíveis e iluminação chiaroscuro. Preserve a semelhança da pessoa.' },
+    { id: 'cyberpunk', name: 'Guerreiro(a) Cyberpunk', icon: '🌃', prompt: 'Converta esta pessoa em um personagem de um mundo cyberpunk. Adicione implantes biônicos sutis, roupas de alta tecnologia e um fundo de cidade neon chuvosa. Mantenha as características faciais da pessoa.' },
+];
+
 // --- Main Application Component ---
 
 export default function App() {
     const [stories, setStories] = useState<Story[]>([]);
     const [tools, setTools] = useState<MagicTool[]>([]);
-    const [view, setView] = useState<'studio' | 'tools'>('studio');
+    const [view, setView] = useState<'studio' | 'tools' | 'photos'>('studio');
     const [activeStoryId, setActiveStoryId] = useState<string | null>(null);
     const [loading, setLoading] = useState<LoadingTarget | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -202,6 +211,12 @@ export default function App() {
     const [toolInput, setToolInput] = useState('');
     const [toolOutput, setToolOutput] = useState('');
     const [isToolRunning, setIsToolRunning] = useState(false);
+
+    // Photo Studio State
+    const [userPhoto, setUserPhoto] = useState<{base64: string; mimeType: string} | null>(null);
+    const [selectedStyle, setSelectedStyle] = useState<PhotoStyle | null>(PHOTO_STYLES[0]);
+    const [generatedPhoto, setGeneratedPhoto] = useState<string | null>(null);
+    const photoFileInputRef = useRef<HTMLInputElement>(null);
 
 
     // Load data from local storage
@@ -486,7 +501,6 @@ export default function App() {
     
     const openChat = () => {
       if (!chatRef.current) {
-          // FIX: Switched from `import.meta.env.VITE_API_KEY` to `process.env.API_KEY` as per coding guidelines.
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
           chatRef.current = ai.chats.create({
               model: 'gemini-2.5-pro',
@@ -565,6 +579,42 @@ export default function App() {
         setTools(prev => prev.filter(tool => tool.id !== toolId));
     };
 
+    const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64String = (reader.result as string).replace(/^data:.+;base64,/, '');
+            setUserPhoto({
+                base64: base64String,
+                mimeType: file.type
+            });
+            setGeneratedPhoto(null); // Clear previous result on new upload
+        };
+        reader.readAsDataURL(file);
+        event.target.value = '';
+    };
+
+    const handleGeneratePhoto = () => {
+        if (!userPhoto || !selectedStyle) return;
+        setGeneratedPhoto(null);
+        handleAction(
+            { type: 'photo_generation' },
+            () => transformImage(userPhoto.base64, userPhoto.mimeType, selectedStyle.prompt),
+            (newPhotoBase64) => {
+                setGeneratedPhoto(newPhotoBase64);
+            }
+        );
+    };
+
+    const handleDownloadGeneratedPhoto = () => {
+        if (!generatedPhoto) return;
+        const link = document.createElement('a');
+        link.href = `data:image/jpeg;base64,${generatedPhoto}`;
+        link.download = `foto_ia_${selectedStyle?.id || 'gerada'}.jpeg`;
+        link.click();
+    };
+
     return (
         <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
             <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -578,6 +628,7 @@ export default function App() {
                 <div className="flex justify-center mb-8">
                     <div className="flex p-1 bg-gray-800 rounded-full">
                         <button onClick={() => setView('studio')} className={`px-6 py-2 text-sm font-semibold rounded-full transition-colors ${view === 'studio' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Estúdio de Histórias</button>
+                        <button onClick={() => setView('photos')} className={`px-6 py-2 text-sm font-semibold rounded-full transition-colors ${view === 'photos' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Estúdio de Fotos</button>
                         <button onClick={() => setView('tools')} className={`px-6 py-2 text-sm font-semibold rounded-full transition-colors ${view === 'tools' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Ferramentas de IA</button>
                     </div>
                 </div>
@@ -778,6 +829,94 @@ export default function App() {
                         )}
                     </div>
                 ))}
+
+                {view === 'photos' && (
+                    <div className="animate-fade-in space-y-8">
+                        <div className="text-center">
+                            <h2 className="text-3xl font-bold text-indigo-300">Estúdio de Fotos IA</h2>
+                            <p className="text-gray-400 mt-2">Transforme suas fotos em retratos profissionais, criativos e únicos.</p>
+                        </div>
+
+                        <div className="grid lg:grid-cols-2 gap-8 items-start">
+                            {/* Controls Column */}
+                            <div className="space-y-6 bg-gray-800/50 p-6 rounded-2xl ring-1 ring-white/10">
+                                <div>
+                                    <h3 className="text-xl font-bold mb-3 text-indigo-300">1. Envie sua Foto</h3>
+                                    <input type="file" ref={photoFileInputRef} onChange={handlePhotoUpload} accept="image/png, image/jpeg" className="hidden" />
+                                    <div 
+                                        className="w-full aspect-square bg-gray-900/70 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-600 hover:border-indigo-500 transition-colors cursor-pointer"
+                                        onClick={() => photoFileInputRef.current?.click()}
+                                    >
+                                        {userPhoto ? (
+                                            <img src={`data:${userPhoto.mimeType};base64,${userPhoto.base64}`} alt="Foto do usuário" className="w-full h-full object-cover rounded-lg" />
+                                        ) : (
+                                            <div className="text-center text-gray-400">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 mx-auto mb-2"><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
+                                                <p>Clique para enviar uma imagem</p>
+                                                <p className="text-xs">(PNG ou JPEG)</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold mb-3 text-indigo-300">2. Escolha um Estilo</h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                        {PHOTO_STYLES.map(style => (
+                                            <button 
+                                                key={style.id}
+                                                onClick={() => setSelectedStyle(style)}
+                                                className={`p-4 rounded-lg text-center transition-all duration-200 ${selectedStyle?.id === style.id ? 'bg-indigo-600 ring-2 ring-offset-2 ring-offset-gray-800 ring-indigo-500' : 'bg-gray-700 hover:bg-gray-600'}`}
+                                            >
+                                                <span className="text-3xl">{style.icon}</span>
+                                                <p className="text-sm font-semibold mt-2">{style.name}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={handleGeneratePhoto} 
+                                    disabled={!userPhoto || !selectedStyle || loading?.type === 'photo_generation'}
+                                    className="w-full inline-flex items-center justify-center px-6 py-3 text-base font-medium rounded-md text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    {loading?.type === 'photo_generation' ? <><Spinner /> Gerando Mágica...</> : '✨ Gerar Foto Impressionante'}
+                                </button>
+                            </div>
+
+                            {/* Results Column */}
+                            <div className="space-y-6">
+                                <h3 className="text-xl font-bold text-center text-indigo-300">Resultado</h3>
+                                <div className="w-full aspect-square bg-gray-800/50 rounded-2xl ring-1 ring-white/10 flex items-center justify-center p-4">
+                                    {loading?.type === 'photo_generation' && (
+                                        <div className="text-center text-gray-400">
+                                            <Spinner />
+                                            <p className="mt-2">A IA está criando sua obra de arte... Isso pode levar um minuto.</p>
+                                        </div>
+                                    )}
+                                    {!loading && generatedPhoto ? (
+                                        <img src={`data:image/jpeg;base64,${generatedPhoto}`} alt="Foto gerada por IA" className="w-full h-full object-contain rounded-lg" />
+                                    ) : !loading && (
+                                        <div className="text-center text-gray-500">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-16 h-16 mx-auto mb-2"><path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                                            <p>Sua foto gerada aparecerá aqui.</p>
+                                            <p className="text-sm">Siga os passos ao lado para começar.</p>
+                                        </div>
+                                    )}
+                                </div>
+                                {generatedPhoto && !loading && (
+                                    <div className="text-center animate-fade-in">
+                                        <button 
+                                            onClick={handleDownloadGeneratedPhoto} 
+                                            className="inline-flex items-center justify-center px-6 py-2 text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 mr-2"><path d="M10.75 2.75a.75.75 0 0 0-1.5 0v8.614L6.295 8.235a.75.75 0 1 0-1.09 1.03l4.25 4.5a.75.75 0 0 0 1.09 0l4.25-4.5a.75.75 0 0 0-1.09-1.03l-2.955 3.129V2.75Z" /><path d="M3.5 12.75a.75.75 0 0 0-1.5 0v2.5A2.75 2.75 0 0 0 4.75 18h10.5A2.75 2.75 0 0 0 18 15.25v-2.5a.75.75 0 0 0-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5Z" /></svg>
+                                            Baixar Foto
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {view === 'tools' && (
                      <div className="animate-fade-in space-y-8">
