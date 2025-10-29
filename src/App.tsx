@@ -486,6 +486,7 @@ export default function App() {
     
     const openChat = () => {
       if (!chatRef.current) {
+          // FIX: Switched from `import.meta.env.VITE_API_KEY` to `process.env.API_KEY` as per coding guidelines.
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
           chatRef.current = ai.chats.create({
               model: 'gemini-2.5-pro',

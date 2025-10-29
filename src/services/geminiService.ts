@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import type { Story, Character, Chapter, MagicTool } from '../types';
 
+// FIX: Switched from `import.meta.env.VITE_API_KEY` to `process.env.API_KEY` as per coding guidelines.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 export const generateConcept = async (premise: string): Promise<Pick<Story, 'title' | 'genre' | 'summary'>> => {

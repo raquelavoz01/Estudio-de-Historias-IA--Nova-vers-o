@@ -1,3 +1,6 @@
+// FIX: Removed `/// <reference types="vite/client" />` which was causing a "Cannot find type definition file" error.
+// This is no longer needed as the project now uses process.env.
+
 export interface MagicTool {
   id: string;
   name: string;
